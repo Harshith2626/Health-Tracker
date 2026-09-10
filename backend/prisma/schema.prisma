@@ -1,0 +1,270 @@
+// Health Valut — Prisma schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  role         String   @default("PATIENT")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  patient       Patient?
+  doctor        Doctor?
+  notifications Notification[]
+  auditLogs     AuditLog[]
+}
+
+model Patient {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name              String
+  dateOfBirth       DateTime?
+  gender            String?
+  bloodGroup        String?
+  phone             String?
+  address           String?
+  allergies         String?
+  existingConditions String?
+  currentMedications String?
+  emergencyContactName  String?
+  emergencyContactPhone String?
+  avatarUrl         String?
+  heightCm          Float?
+  weightKg          Float?
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  medicalRecords    MedicalRecord[]
+  medicalHistory    MedicalHistoryEvent[]
+  appointments      Appointment[]
+  prescriptions     Prescription[]
+  reminders         Reminder[]
+  recordAccess      RecordAccess[]
+  aiConversations   AIConversation[]
+}
+
+model Doctor {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name           String
+  specialization String
+  qualification  String?
+  experienceYears Int?
+  clinicName     String?
+  location       String?
+  biography      String?
+  avatarUrl      String?
+  consultationFee Float?
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  slots          AppointmentSlot[]
+  appointments   Appointment[]
+  prescriptions  Prescription[]
+  historyEntries MedicalHistoryEvent[]
+  recordAccess   RecordAccess[]
+  uploadedRecords MedicalRecord[] @relation("DoctorUploadedRecords")
+}
+
+model MedicalRecord {
+  id           String     @id @default(cuid())
+  patientId    String
+  patient      Patient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  recordType   String
+  title        String
+  eventDate    DateTime
+  hospital     String?
+  doctorName   String?
+  description  String?
+
+  fileUrl      String?
+  fileName     String?
+  fileMimeType String?
+
+  uploadedByDoctorId String?
+  uploadedByDoctor   Doctor? @relation("DoctorUploadedRecords", fields: [uploadedByDoctorId], references: [id])
+
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
+
+model MedicalHistoryEvent {
+  id          String           @id @default(cuid())
+  patientId   String
+  patient     Patient          @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  doctorId    String?
+  doctor      Doctor?          @relation(fields: [doctorId], references: [id])
+
+  eventType   String
+  title       String
+  description String?
+  eventDate   DateTime
+
+  createdAt   DateTime         @default(now())
+}
+
+model AppointmentSlot {
+  id        String   @id @default(cuid())
+  doctorId  String
+  doctor    Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  startTime DateTime
+  endTime   DateTime
+  isBooked  Boolean  @default(false)
+
+  appointment Appointment?
+
+  createdAt DateTime @default(now())
+
+  @@index([doctorId, startTime])
+}
+
+model Appointment {
+  id         String            @id @default(cuid())
+  patientId  String
+  patient    Patient           @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  doctorId   String
+  doctor     Doctor            @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  slotId     String?           @unique
+  slot       AppointmentSlot?  @relation(fields: [slotId], references: [id])
+
+  reasonForVisit String?
+  status     String            @default("PENDING")
+
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+}
+
+model Prescription {
+  id          String   @id @default(cuid())
+  patientId   String
+  patient     Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  doctorId    String
+  doctor      Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  diagnosis   String?
+  notes       String?
+  issuedAt    DateTime @default(now())
+
+  medicines   PrescriptionMedicine[]
+}
+
+model PrescriptionMedicine {
+  id             String       @id @default(cuid())
+  prescriptionId String
+  prescription   Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+
+  name           String
+  dosage         String?
+  frequency      String?
+  duration       String?
+  instructions   String?
+}
+
+model Reminder {
+  id        String       @id @default(cuid())
+  patientId String
+  patient   Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  type      String
+  title     String
+  notes     String?
+  remindAt  DateTime
+  isDone    Boolean      @default(false)
+  repeat    String?      // e.g. "daily", "none"
+
+  createdAt DateTime     @default(now())
+}
+
+// Granular patient-controlled authorization: which doctor can see what.
+model RecordAccess {
+  id            String   @id @default(cuid())
+  patientId     String
+  patient       Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  doctorId      String
+  doctor        Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  // Category-level flags
+  medicalHistory Boolean @default(false)
+  labReports     Boolean @default(false)
+  prescriptions  Boolean @default(false)
+  scanReports    Boolean @default(false)
+  hospitalRecords Boolean @default(false)
+  allRecords     Boolean @default(false)
+
+  // Optional grant scoped to one specific record instead of a category.
+  // Defaults to "CATEGORY" (a non-null sentinel)
+  recordId      String  @default("CATEGORY")
+
+  grantedAt     DateTime @default(now())
+  revokedAt     DateTime?
+
+  @@unique([patientId, doctorId, recordId])
+}
+
+model AIConversation {
+  id        String     @id @default(cuid())
+  patientId String
+  patient   Patient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  title     String     @default("New conversation")
+  createdAt DateTime   @default(now())
+
+  messages  AIMessage[]
+}
+
+model AIMessage {
+  id             String         @id @default(cuid())
+  conversationId String
+  conversation   AIConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  role           String // "user" | "assistant"
+  content        String
+
+  createdAt      DateTime       @default(now())
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type      String
+  title     String
+  message   String
+  isRead    Boolean          @default(false)
+
+  createdAt DateTime         @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  action    String
+  details   String?
+
+  createdAt DateTime @default(now())
+}
