@@ -2,11 +2,11 @@
   "name": "health-valut-backend",
   "version": "1.0.0",
   "private": true,
-  "main": "dist/server.js",
+  "main": "dist/src/server.js",
   "scripts": {
     "dev": "nodemon --watch src --exec ts-node src/server.ts",
     "build": "tsc",
-    "start": "node dist/server.js",
+    "start": "node dist/src/server.js",
     "render-build": "npm install && npx prisma generate && npx prisma db push && npm run build && npm run seed",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
